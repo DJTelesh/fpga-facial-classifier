@@ -1,0 +1,109 @@
+# =============================================================================
+# ECE 4999 -- Parameterized Inference Accelerator
+# .gitignore
+#
+# Principle: ignore anything a tool regenerates from committed sources.
+# Commit anything that is an input to the build, a measurement, or a reference.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Quartus -- build directories
+# -----------------------------------------------------------------------------
+db/
+incremental_db/
+output_files/
+hc_output/
+greybox_tmp/
+.qsys_edit/
+simulation/
+
+# NOTE: output_files/ holds *.fit.rpt and *.sta.rpt, which are the resource and
+# Fmax measurements for sections 6.3 and 6.4. They are ignored here because
+# Quartus overwrites them on every compile. Copy them out to results/<config>/
+# after each synthesis instead. results/ is committed.
+
+# -----------------------------------------------------------------------------
+# Quartus -- scattered root-directory artifacts
+# -----------------------------------------------------------------------------
+*.qws
+*.sof
+*.pof
+*.rbf
+*.jdi
+*.pin
+*.sld
+*.smsg
+*.done
+*.qarlog
+*.qar
+*.sopcinfo
+*.bak
+c5_pin_model_dump.txt
+PLLJ_PLLSPE_INFO.txt
+
+# -----------------------------------------------------------------------------
+# ModelSim / Questa
+# -----------------------------------------------------------------------------
+work/
+transcript
+vsim.wlf
+*.wlf
+*.vstf
+*.vcd
+*.ucdb
+modelsim.ini
+vish_stacktrace.vstf
+wlf*
+
+# modelsim.ini is generated and contains absolute library paths, which differ
+# between lab machines. Keep a checked-in modelsim_template.ini if you need
+# custom settings, and copy it at setup time.
+
+# -----------------------------------------------------------------------------
+# C++ (HPS baselines)
+# -----------------------------------------------------------------------------
+*.o
+*.d
+*.a
+*.so
+bin/
+build/
+compile_commands.json
+
+# -----------------------------------------------------------------------------
+# Python
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+.ipynb_checkpoints/
+*.egg-info/
+
+# -----------------------------------------------------------------------------
+# Data
+# -----------------------------------------------------------------------------
+# Raw dataset (~290 MB) and derived splits. Regenerable from prepare_data.py;
+# record the SHA-256 in the results file instead of committing the file.
+*.csv
+fer3.npz
+data/
+datasets/
+
+# DO commit, so these are NOT ignored:
+#   weights/*.npz        quantized weights (144 KB at int8) -- test vectors are
+#                        keyed to their checksum, so they must be in the repo
+#   vectors/*            golden test vectors
+#   results/*            fitter reports, timing reports, measurement logs
+#   arithmetic_contract.md
+
+# -----------------------------------------------------------------------------
+# Editors / OS
+# -----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+*~
+*.swp
+.vscode/
+.idea/
