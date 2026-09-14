@@ -87,7 +87,6 @@ env/
 # Raw dataset (~290 MB) and derived splits. Regenerable from prepare_data.py;
 # record the SHA-256 in the results file instead of committing the file.
 *.csv
-fer3.npz
 data/
 datasets/
 
