@@ -1,8 +1,8 @@
 import numpy as np
 d = np.load("fer3.npz")
 print(d.files)                          # what arrays are in it
-print(d["x_train"].shape, d["x_train"].dtype)
-print(d["y_train"].shape)
+print(d["x_train"].shape, d["x_train"].dtype, "\nXtrainStuff")
+print(d["y_train"].shape, d["y_train"].dtype, "\nYtrainStuff")
 print(np.bincount(d["y_train"]))        # count per class
 print(d["x_train"].min(), d["x_train"].max())
 print(d["class_names"])
