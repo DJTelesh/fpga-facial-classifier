@@ -1,66 +1,73 @@
+from pathlib import Path
+
 import torch
 import numpy as np
 import torch.nn as nn
 
-d = np.load("fer3.npz")
+# paths are relative to the repo root so the script runs from any folder
+ROOT = Path(__file__).resolve().parents[2]
+OUT = ROOT / "weights" / "fer3_float.npz"
 
+torch.manual_seed(0) #same seed -> same weights every run
+
+d = np.load(ROOT / "fer3.npz")
+
+# (x - 128) / 128 puts pixels in [-1, 1). On the FPGA this is just x - 128 as an int8.
 x_train = torch.from_numpy((d["x_train"].astype(np.float32) - 128) / 128)
 y_train = torch.from_numpy(d["y_train"])
 x_val = torch.from_numpy((d["x_val"].astype(np.float32) - 128) / 128)
 y_val = torch.from_numpy(d["y_val"])
-x_test = torch.from_numpy((d["x_test"].astype(np.float32) - 128) / 128)
-y_test = torch.from_numpy(d["y_test"])
 
 model = nn.Sequential(
-    #first hidden layer I think based on googling
+    #hidden layer: 2304 pixels -> 64 neurons
     nn.Linear(2304, 64),
     nn.ReLU(),
 
-    #second hidden layer I think based on googling
+    #output layer: 64 neurons -> 3 class scores
     nn.Linear(64, 3),
 )
-criterion = nn.CrossEntropyLoss() #everyone online uses that name
-predictions = model(x_train)
-targets = y_train
-loss = criterion(predictions, targets)
-loss.backward()
-optimizer = torch.optim.SGD(model.parameters(), lr = 0.001) #does this know to apply the loss somehow? feels like there are a looot of layers of abstraction here
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(model.parameters(), lr = 0.001)
 
+best_val_acc = 0.0
+best_state = None
 
+for epoch in range(20):
+    #reshuffle every epoch so batches are different each time
+    order = torch.randperm(len(x_train))
+    total_loss = 0.0
+    for i in range(0, len(x_train), 64):
+        idx = order[i:i+64]
+        xb = x_train[idx]
+        yb = y_train[idx]
+        optimizer.zero_grad()
+        loss = criterion(model(xb), yb)
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item() * len(idx)
 
+    with torch.no_grad():
+        train_acc = (model(x_train).argmax(1) == y_train).float().mean().item()
+        val_acc = (model(x_val).argmax(1) == y_val).float().mean().item()
 
-print(loss.item(), "lossss")
+    #keep the weights from the epoch that did best on validation, not the last one
+    marker = ""
+    if val_acc > best_val_acc:
+        best_val_acc = val_acc
+        best_state = {k: v.clone() for k, v in model.state_dict().items()}
+        marker = "  <- best"
+    print(f"{epoch:2d}  loss {total_loss / len(x_train):.4f}  "
+          f"train {train_acc:.4f}  val {val_acc:.4f}{marker}")
 
+# the test set is deliberately not touched here -- quantize.py reports it once at the end
 
-
-print(x_train.dtype, x_train.min(), x_train.max())
-print(y_train.dtype, y_train.shape)
-print(d["x_train"], "this is x train")
-
-print(d["x_val"], "this is x val")
-'''
-d = np.load("fer3.npz")
-print(d.files)                          # what arrays are in it
-print(d["x_train"].shape, d["x_train"].dtype)
-print(d["y_train"].shape, d["y_train"].dtype)
-print(np.bincount(d["y_train"]))        # count per class
-print(d["x_train"].min(), d["x_train"].max())
-print(d["class_names"])
-
-import matplotlib.pyplot as plt
-img = d["x_train"][5].reshape(48, 48)
-plt.imsave("check0.png", img, cmap="gray")
-print(d["class_names"][d["y_train"][5]])
-
-
-import numpy as np
-rng = np.random.default_rng(0)
-x = rng.normal(size=2304)
-W1 = rng.normal(size=(64, 2304))
-b1 = rng.normal(size=64)
-h = W1 @ x + b1
-h = np.maximum(0, h)
-W2 = rng.normal(size=(3, 64))
-b2 = rng.normal(size=3)
-logits = W2 @ h + b2
-'''
+# save as plain numpy arrays so quantize.py doesn't need torch
+np.savez(
+    OUT,
+    w1=best_state["0.weight"].numpy(),   # (64, 2304)
+    b1=best_state["0.bias"].numpy(),     # (64,)
+    w2=best_state["2.weight"].numpy(),   # (3, 64)
+    b2=best_state["2.bias"].numpy(),     # (3,)
+    best_val_acc=best_val_acc,
+)
+print(f"best val acc {best_val_acc:.4f}, saved to {OUT.relative_to(ROOT)}")
