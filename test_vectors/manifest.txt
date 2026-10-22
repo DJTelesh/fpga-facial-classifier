@@ -1,0 +1,3 @@
+weights file : weights/fer3_int8.npz
+sha256       : c1140abb1ac3091845f99658272cea26382f9a14f1450bd4d2c479c9bdb48d90
+images       : x_val[0:4]

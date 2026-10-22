@@ -16,6 +16,12 @@ module tb_mac_unit;
     logic signed [AW-1:0] b1_q;
     logic signed [AW-1:0] acc1;
 
+    //for python golden numbers
+    logic signed [DW-1:0] w_mem   [0:147455];
+    logic signed [DW-1:0] x_mem   [0:2303];
+    logic signed [AW-1:0] b_mem   [0:63];
+    logic signed [AW-1:0] exp_mem [0:63];
+
     // 2. the design under test, ports connected by name
     mac_unit #(.DATA_WIDTH(DW), .ACC_WIDTH(AW)) dut (
         .clk   (clk),
@@ -134,7 +140,24 @@ module tb_mac_unit;
         if (acc1 === 1920)
             $display("PASS test 5: acc1 = %0d", acc1);
         else
-            $display("FAIL test 5: acc1 = %0d, expected 1920", acc1);   
+            $display("FAIL test 5: acc1 = %0d, expected 1920", acc1);  
+
+        //test 6, GOLDEN test 
+        $readmemh("test_vectors/w1.hex",        w_mem);
+        $readmemh("test_vectors/img0_x.hex",    x_mem);
+        $readmemh("test_vectors/img0_acc1.hex", exp_mem);
+        $readmemh("test_vectors/b1.hex",        b_mem);
+        for (int j = 0; j < 64; j++) begin
+            load_bias(b_mem[j]);
+            for (int i = 0; i < 2304; i++) begin
+                mac(w_mem[j*2304+i], x_mem[i]);
+            end
+            idle();
+            if (acc1 === exp_mem[j])
+                $display("PASS GOLDEN test: acc1 = %0d", acc1);
+            else
+                $display("FAIL GOLDEN test #%0d: acc1 = %0d, expected %0d", j, acc1, exp_mem[j]);
+        end
     $finish;
     end
 
