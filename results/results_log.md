@@ -38,7 +38,7 @@ One entry per measurement. Newest at the bottom. Never edit an old entry; add a 
 - Config: arithmetic contract v2, `quantize.py --sweep`. Float weights
   weights/fer3_float.npz (train.py, seed 0, best-val epoch). Per-tensor symmetric weight
   scales, s_h calibrated on the train max. For b < 8 the input is the top b bits of the
-  pixel (truncation). ACC_WIDTH 32 for b ≤ 8, 48 above. Commit: TODO
+  pixel (truncation). ACC_WIDTH 32 for b ≤ 8, 48 above. Commit: 4a3f8ed
 - Result:
 
   | bits | val acc | test acc | val agree | test agree |
@@ -66,7 +66,7 @@ One entry per measurement. Newest at the bottom. Never edit an old entry; add a 
 - Config: hw/rtl/mac_unit.sv identical for both widths (DATA_WIDTH/ACC_WIDTH = 8/32 and
   16/48, set with `iverilog -P` overrides on tb_mac_unit.sv). Icarus Verilog 14.0 (devel),
   OSS CAD Suite 2026-11-19. Vectors: test_vectors/ (int8, weights sha256 f1c6b884…) and
-  test_vectors/int16/ (int16, weights sha256 5e3b3d0c…). Commit: TODO
+  test_vectors/int16/ (int16, weights sha256 5e3b3d0c…). Commit: 4a3f8ed
 - Input: x_val[0:4]
 - Result: 256/256 layer-1 accumulators bit-exact against infer_int() at BOTH widths.
   Directed tests 5/5 at both widths.
