@@ -1,14 +1,15 @@
 // Run from the REPO ROOT (the $readmemh paths are relative to it):
-//   vlib work
-//   vlog -sv hw/rtl/mac_unit.sv hw/tb/tb_mac_unit.sv
-//   vsim -c tb_mac_unit -do "run -all; quit -f"
+//   iverilog -g2012 -o tb_mac_unit.vvp hw/rtl/mac_unit.sv hw/tb/tb_mac_unit.sv
+//   vvp -n tb_mac_unit.vvp
+// int16 configuration (vectors from gen_vectors.py --bits 16):
+//   iverilog -g2012 -Ptb_mac_unit.DW=16 -Ptb_mac_unit.AW=48 -o tb_mac_unit.vvp ...
 `timescale 1ns/1ps
 `default_nettype none
 
 module tb_mac_unit;
 
-    localparam int DW = 8;
-    localparam int AW = 32;
+    parameter int DW = 8;     // DATA_WIDTH
+    parameter int AW = 32;    // ACC_WIDTH, from arithmetic_contract.md section 4
     localparam int N_IN     = 2304;
     localparam int N_HIDDEN = 64;
     localparam int N_IMAGES = 4;    // must match N_IMAGES in gen_vectors.py
@@ -31,6 +32,7 @@ module tb_mac_unit;
 
     int fails = 0;          // directed-test failures
     int golden_fails = 0;   // golden neuron mismatches
+    string vec_dir;         // int8 vectors live at the top, other widths in int<DW>/
 
     // 2. the design under test, ports connected by name
     mac_unit #(.DATA_WIDTH(DW), .ACC_WIDTH(AW)) dut (
@@ -146,14 +148,16 @@ module tb_mac_unit;
         check("test 5 (bias only)", 1920);
 
         // test 6, GOLDEN: every hidden neuron of every dumped image vs infer_int()
-        $readmemh("test_vectors/w1.hex", w_mem);
-        $readmemh("test_vectors/b1.hex", b_mem);
+        vec_dir = (DW == 8) ? "test_vectors" : $sformatf("test_vectors/int%0d", DW);
+        $display("DATA_WIDTH %0d, ACC_WIDTH %0d, vectors from %s", DW, AW, vec_dir);
+        $readmemh({vec_dir, "/w1.hex"}, w_mem);
+        $readmemh({vec_dir, "/b1.hex"}, b_mem);
         if ($isunknown(w_mem[0]) || $isunknown(b_mem[0]))
             $fatal(1, "test vectors not loaded -- run vsim from the repo root");
 
         for (int k = 0; k < N_IMAGES; k++) begin
-            $readmemh($sformatf("test_vectors/img%0d_x.hex", k),    x_mem);
-            $readmemh($sformatf("test_vectors/img%0d_acc1.hex", k), exp_mem);
+            $readmemh($sformatf("%s/img%0d_x.hex", vec_dir, k),    x_mem);
+            $readmemh($sformatf("%s/img%0d_acc1.hex", vec_dir, k), exp_mem);
             for (int j = 0; j < N_HIDDEN; j++) begin
                 // no reset between neurons: load_bias restarts the sum
                 load_bias(b_mem[j]);

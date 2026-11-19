@@ -33,3 +33,45 @@ One entry per measurement. Newest at the bottom. Never edit an old entry; add a 
 - Result: 1 DSP block, 32 registers, 84 pins
 - Caveats: pins are an artifact of mac_unit being top-level (every port became a pin).
   Single multiplier, so says nothing yet about DSP packing with many MACs.
+
+## 2026-11-19 — Accuracy vs DATA_WIDTH (golden model)
+- Config: arithmetic contract v2, `quantize.py --sweep`. Float weights
+  weights/fer3_float.npz (train.py, seed 0, best-val epoch). Per-tensor symmetric weight
+  scales, s_h calibrated on the train max. For b < 8 the input is the top b bits of the
+  pixel (truncation). ACC_WIDTH 32 for b ≤ 8, 48 above. Commit: TODO
+- Result:
+
+  | bits | val acc | test acc | val agree | test agree |
+  |------|---------|----------|-----------|------------|
+  | float| 0.6747  | 0.6851   | —         | —          |
+  | 2    | 0.3333  | 0.3333   | 0.3108    | 0.3317     |
+  | 3    | 0.5807  | 0.5994   | 0.6916    | 0.6979     |
+  | 4    | 0.6498  | 0.6651   | 0.8458    | 0.8550     |
+  | 5    | 0.6723  | 0.6827   | 0.9309    | 0.9319     |
+  | 6    | 0.6691  | 0.6883   | 0.9663    | 0.9599     |
+  | 7    | 0.6715  | 0.6859   | 0.9823    | 0.9888     |
+  | 8    | 0.6763  | 0.6859   | 0.9920    | 0.9928     |
+  | 12   | 0.6747  | 0.6851   | 1.0000    | 1.0000     |
+  | 16   | 0.6747  | 0.6851   | 1.0000    | 1.0000     |
+
+  (agree = same prediction as the float model)
+- Reading: accuracy holds down to ~5 bits, drops at 4, and is chance at 2 (predicts one
+  class). Agreement with float falls steadily below 16 bits and is the sharper metric.
+- Caveats: n = 1,245 (val) / 1,248 (test), so accuracy has ~±1.3 pt standard error; 5–8
+  bits cannot be separated from float by accuracy alone. Golden model only: the hardware
+  configurations are 8 and 16 bits. One trained model with per-tensor scales; per-channel
+  scales would likely move the knee lower. Nothing was tuned on test.
+
+## 2026-11-19 — MAC unit vs golden model, DATA_WIDTH 8 and 16
+- Config: hw/rtl/mac_unit.sv identical for both widths (DATA_WIDTH/ACC_WIDTH = 8/32 and
+  16/48, set with `iverilog -P` overrides on tb_mac_unit.sv). Icarus Verilog 14.0 (devel),
+  OSS CAD Suite 2026-11-19. Vectors: test_vectors/ (int8, weights sha256 f1c6b884…) and
+  test_vectors/int16/ (int16, weights sha256 5e3b3d0c…). Commit: TODO
+- Input: x_val[0:4]
+- Result: 256/256 layer-1 accumulators bit-exact against infer_int() at BOTH widths.
+  Directed tests 5/5 at both widths.
+- Max |acc| over val + test (golden model): int8 acc1 1,388,056, acc2 37,670.
+  int16 acc1 357,785,919, acc2 2,514,147,016. The int16 acc2 exceeds int32
+  (2,147,483,647) on real data, so ACC_WIDTH 48 is required, not just a worst-case margin.
+- Caveats: one MAC lane, layer 1 only, simulation. Not re-synthesized at 16 bits, so DSP
+  use at 16 bits is still unmeasured.

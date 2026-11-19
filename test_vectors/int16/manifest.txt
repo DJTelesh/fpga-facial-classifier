@@ -1,0 +1,7 @@
+dataset             : fer3.npz
+dataset sha256      : 1112e5950e94fc85376f96a0f73993c0a0bcb6a52e4c2276aab75434de4eded4
+weights             : weights/fer3_int16.npz
+int weight sha256   : 5e3b3d0c47b7b4e66af3a81c6fca21173a49ba7f5fce6868b3a95fb5172d12fc
+DATA_WIDTH          : 16
+ACC_WIDTH           : 48
+images              : x_val[0:4]
