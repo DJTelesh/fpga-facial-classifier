@@ -1,3 +1,7 @@
+// Run from the REPO ROOT (the $readmemh paths are relative to it):
+//   vlib work
+//   vlog -sv hw/rtl/mac_unit.sv hw/tb/tb_mac_unit.sv
+//   vsim -c tb_mac_unit -do "run -all; quit -f"
 `timescale 1ns/1ps
 `default_nettype none
 
@@ -5,22 +9,28 @@ module tb_mac_unit;
 
     localparam int DW = 8;
     localparam int AW = 32;
+    localparam int N_IN     = 2304;
+    localparam int N_HIDDEN = 64;
+    localparam int N_IMAGES = 4;    // must match N_IMAGES in gen_vectors.py
 
     // 1. one signal per MAC port, same widths and signedness
     logic                 clk;
     logic                 rst_n;
     logic                 en;
     logic                 lb;
-    logic signed [DW-1:0] W1_q;
-    logic signed [DW-1:0] w_q;
-    logic signed [AW-1:0] b1_q;
-    logic signed [AW-1:0] acc1;
+    logic signed [DW-1:0] w;
+    logic signed [DW-1:0] x;
+    logic signed [AW-1:0] bias;
+    logic signed [AW-1:0] acc;
 
     //for python golden numbers
-    logic signed [DW-1:0] w_mem   [0:147455];
-    logic signed [DW-1:0] x_mem   [0:2303];
-    logic signed [AW-1:0] b_mem   [0:63];
-    logic signed [AW-1:0] exp_mem [0:63];
+    logic signed [DW-1:0] w_mem   [0:N_HIDDEN*N_IN-1];
+    logic signed [DW-1:0] x_mem   [0:N_IN-1];
+    logic signed [AW-1:0] b_mem   [0:N_HIDDEN-1];
+    logic signed [AW-1:0] exp_mem [0:N_HIDDEN-1];
+
+    int fails = 0;          // directed-test failures
+    int golden_fails = 0;   // golden neuron mismatches
 
     // 2. the design under test, ports connected by name
     mac_unit #(.DATA_WIDTH(DW), .ACC_WIDTH(AW)) dut (
@@ -28,137 +38,148 @@ module tb_mac_unit;
         .rst_n (rst_n),
         .en    (en),
         .lb    (lb),
-        .W1_q  (W1_q),
-        .w_q   (w_q),
-        .b1_q  (b1_q),
-        .acc1  (acc1)
+        .w     (w),
+        .x     (x),
+        .bias  (bias),
+        .acc   (acc)
     );
-    task automatic mac(input logic signed [DW-1:0] w,
-                   input logic signed [DW-1:0] x);
-    @(negedge clk);
-    en   = 1;
-    lb   = 0;
-    W1_q = w;
-    w_q  = x;
+
+    // Every task drives inputs on the negedge, so the MAC captures them on the
+    // NEXT posedge. acc only reflects a mac() call after one more clock edge,
+    // which is why every check comes after idle().
+    task automatic mac(input logic signed [DW-1:0] w_in,
+                       input logic signed [DW-1:0] x_in);
+        @(negedge clk);
+        en = 1;
+        lb = 0;
+        w  = w_in;
+        x  = x_in;
     endtask
 
     task automatic idle();
-    @(negedge clk);
-    en   = 0;
+        @(negedge clk);
+        en = 0;
     endtask
 
     task automatic do_reset();
-    repeat (3) @(negedge clk) begin
-        rst_n = 0;
-    end
-    @(negedge clk) begin
-        rst_n = 1;
-    end
+        // en/lb low first, or the MAC adds whatever is left on w/x the
+        // cycle after reset releases
+        en = 0;
+        lb = 0;
+        repeat (3) @(negedge clk) begin
+            rst_n = 0;
+        end
+        @(negedge clk) begin
+            rst_n = 1;
+        end
     endtask
 
     task automatic load_bias(input logic signed [AW-1:0] b);
-    @(negedge clk) begin
-        en = 1;
-        lb = 1;
-        b1_q = b;
-    end
+        @(negedge clk) begin
+            en   = 1;
+            lb   = 1;
+            bias = b;
+        end
+    endtask
+
+    task automatic check(input string name, input logic signed [AW-1:0] expected);
+        if (acc === expected)
+            $display("PASS %s: acc = %0d", name, acc);
+        else begin
+            $display("FAIL %s: acc = %0d, expected %0d", name, acc, expected);
+            fails++;
+        end
     endtask
 
     // 3. 50 MHz clock
     initial clk = 0;
     always #10 clk = ~clk;
 
-    // One test
     initial begin
-
         rst_n = 0;
         en    = 0;
         lb    = 0;
-        W1_q  = 0;
-        w_q   = 0;
-        b1_q  = 0;
+        w     = 0;
+        x     = 0;
+        bias  = 0;
 
+        // test 1: accumulate from reset, including the -128 input corner
+        // 5*3 + -4*7 + -128*-127 = 15 - 28 + 16256
         do_reset();
         mac(5, 3);
         mac(-4, 7);
         mac(-128, -127);
-        if (acc1 === -13)
-            $display("PASS test 1: acc1 = %0d", acc1);
-        else
-            $display("FAIL test 1: acc1 = %0d, expected -13", acc1);        
+        idle();
+        check("test 1 (accumulate)", 16243);
 
-    // Two test
+        // test 2: en=0 beats lb=1 -- the register just holds, it is not a latch
         do_reset();
         @(negedge clk) begin
             en   = 0;
             lb   = 1;
-            b1_q = 3;
-            W1_q = 5;
-            w_q  = 4;
-        end //MAC should be nothing, is this a latch?? ah oh
-        load_bias(3);
-        mac(-4, 7);
-        mac(-128, -127);
-        if (acc1 === -25)
-            $display("PASS test 2: acc1 = %0d", acc1);
-        else
-            $display("FAIL test 2: acc1 = %0d, expected -25", acc1);        
+            bias = 3;
+            w    = 5;
+            x    = 4;
+        end
+        idle();
+        check("test 2 (en beats lb)", 0);
 
-    // Three test
+        // test 3: bias then accumulate, 3 - 28 + 16256
         do_reset();
-        @(negedge clk) begin
-            en   = 0;
-            lb   = 1;
-            b1_q = 3;
-            W1_q = 5;
-            w_q  = 4;
-        end //MAC should be nothing, is this a latch?? ah oh
-
         load_bias(3);
         mac(-4, 7);
         mac(-128, -127);
         idle();
-        if (acc1 === 16231)
-            $display("PASS test 3: acc1 = %0d", acc1);
-        else
-            $display("FAIL test 3: acc1 = %0d, expected 16231", acc1);        
+        check("test 3 (bias + accumulate)", 16231);
 
-        //test 4
+        // test 4: negative sum, -28 - 12
         do_reset();
         mac(-4, 7);
         mac(-2, 6);
         idle();
-        if (acc1 === -40)
-            $display("PASS test 4: acc1 = %0d", acc1);
-        else
-            $display("FAIL test 4: acc1 = %0d, expected -40", acc1);   
+        check("test 4 (negative)", -40);
 
-        //test 5
+        // test 5: bias load alone
         do_reset();
         load_bias(1920);
         idle();
-        if (acc1 === 1920)
-            $display("PASS test 5: acc1 = %0d", acc1);
-        else
-            $display("FAIL test 5: acc1 = %0d, expected 1920", acc1);  
+        check("test 5 (bias only)", 1920);
 
-        //test 6, GOLDEN test 
-        $readmemh("test_vectors/w1.hex",        w_mem);
-        $readmemh("test_vectors/img0_x.hex",    x_mem);
-        $readmemh("test_vectors/img0_acc1.hex", exp_mem);
-        $readmemh("test_vectors/b1.hex",        b_mem);
-        for (int j = 0; j < 64; j++) begin
-            load_bias(b_mem[j]);
-            for (int i = 0; i < 2304; i++) begin
-                mac(w_mem[j*2304+i], x_mem[i]);
+        // test 6, GOLDEN: every hidden neuron of every dumped image vs infer_int()
+        $readmemh("test_vectors/w1.hex", w_mem);
+        $readmemh("test_vectors/b1.hex", b_mem);
+        if ($isunknown(w_mem[0]) || $isunknown(b_mem[0]))
+            $fatal(1, "test vectors not loaded -- run vsim from the repo root");
+
+        for (int k = 0; k < N_IMAGES; k++) begin
+            $readmemh($sformatf("test_vectors/img%0d_x.hex", k),    x_mem);
+            $readmemh($sformatf("test_vectors/img%0d_acc1.hex", k), exp_mem);
+            for (int j = 0; j < N_HIDDEN; j++) begin
+                // no reset between neurons: load_bias restarts the sum
+                load_bias(b_mem[j]);
+                for (int i = 0; i < N_IN; i++) begin
+                    mac(w_mem[j*N_IN+i], x_mem[i]);
+                end
+                idle();
+                if (acc !== exp_mem[j]) begin
+                    golden_fails++;
+                    if (golden_fails <= 10)   // don't bury the log
+                        $display("FAIL GOLDEN img %0d neuron %0d: acc = %0d, expected %0d",
+                                 k, j, acc, exp_mem[j]);
+                end
             end
-            idle();
-            if (acc1 === exp_mem[j])
-                $display("PASS GOLDEN test: acc1 = %0d", acc1);
-            else
-                $display("FAIL GOLDEN test #%0d: acc1 = %0d, expected %0d", j, acc1, exp_mem[j]);
         end
-    $finish;
+        $display("GOLDEN: %0d/%0d neurons match",
+                 N_IMAGES*N_HIDDEN - golden_fails, N_IMAGES*N_HIDDEN);
+
+        if (fails == 0 && golden_fails == 0)
+            $display("ALL TESTS PASSED");
+        else
+            $display("*** %0d directed FAIL(s), %0d golden mismatch(es) ***",
+                     fails, golden_fails);
+        $finish;
     end
 
 endmodule
+
+`default_nettype wire

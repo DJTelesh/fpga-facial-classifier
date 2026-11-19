@@ -122,16 +122,24 @@ def infer_int(x_uint8, q, return_intermediates=False):
     return pred
 
 
+def int_weights_sha256(q):
+    """The weight fingerprint in arithmetic_contract.md section 8.
+
+    Hashes only the integer arrays the hardware uses, so it does not change if the
+    .npz container or the documentation-only float scales change.
+    """
+    digest = hashlib.sha256()
+    for k in ("w1_q", "b1_q", "m1", "shift1", "w2_q", "b2_q"):
+        digest.update(np.ascontiguousarray(q[k]).tobytes())
+    return digest.hexdigest()
+
+
 def main():
     d = np.load(ROOT / "fer3.npz")
     f = dict(np.load(FLOAT_WEIGHTS))
 
     q = quantize(f, d["x_train"])
     np.savez(INT_WEIGHTS, **q)
-
-    digest = hashlib.sha256()
-    for k in ("w1_q", "b1_q", "m1", "shift1", "w2_q", "b2_q"):
-        digest.update(np.ascontiguousarray(q[k]).tobytes())
 
     print("=" * 72)
     print("Quantization parameters")
@@ -144,7 +152,7 @@ def main():
     print(f"  b1_q range        : [{q['b1_q'].min()}, {q['b1_q'].max()}]")
     print(f"  b2_q range        : [{q['b2_q'].min()}, {q['b2_q'].max()}]")
     print(f"  saved             : {INT_WEIGHTS.relative_to(ROOT)}")
-    print(f"  sha256 (int data) : {digest.hexdigest()}")
+    print(f"  sha256 (int data) : {int_weights_sha256(q)}")
     print()
 
     print("=" * 72)

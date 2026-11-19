@@ -1,3 +1,5 @@
-weights file : weights/fer3_int8.npz
-sha256       : c1140abb1ac3091845f99658272cea26382f9a14f1450bd4d2c479c9bdb48d90
-images       : x_val[0:4]
+dataset             : fer3.npz
+dataset sha256      : 1112e5950e94fc85376f96a0f73993c0a0bcb6a52e4c2276aab75434de4eded4
+weights             : weights/fer3_int8.npz
+int weight sha256   : f1c6b8841e66e8dcac6067a555d03d4c64da9caec6737564c05c4f52ca21c9b2
+images              : x_val[0:4]

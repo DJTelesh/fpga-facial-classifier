@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from quantize import infer_int          # the golden model
+from quantize import infer_int, int_weights_sha256   # the golden model
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "test_vectors"
@@ -50,12 +50,15 @@ def main():
                                              mid["x_q"][0].astype(np.int64)))
     assert by_hand == mid["acc1"][0, n], "hand-computed acc1 disagrees with infer_int"
 
-    # Record which weights these vectors belong to (contract section 8).
-    sha = hashlib.sha256(wpath.read_bytes()).hexdigest()
+    # Record which data and weights these vectors belong to (contract section 8).
+    # Same fingerprints quantize.py prints and the contract records.
+    data_sha = hashlib.sha256((ROOT / "fer3.npz").read_bytes()).hexdigest()
     (OUT / "manifest.txt").write_text(
-        f"weights file : weights/fer3_int8.npz\n"
-        f"sha256       : {sha}\n"
-        f"images       : x_val[0:{N_IMAGES}]\n"
+        f"dataset             : fer3.npz\n"
+        f"dataset sha256      : {data_sha}\n"
+        f"weights             : weights/fer3_int8.npz\n"
+        f"int weight sha256   : {int_weights_sha256(q)}\n"
+        f"images              : x_val[0:{N_IMAGES}]\n"
     )
     print(f"wrote vectors for {N_IMAGES} images to {OUT.relative_to(ROOT)}")
 
